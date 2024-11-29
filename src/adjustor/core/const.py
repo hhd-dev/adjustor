@@ -1,4 +1,32 @@
+from typing import TypedDict
+
 from .alib import A, D, DeviceParams, AlibParams
+
+
+class DevicePreset(TypedDict):
+    tdp_limit: int
+    slow_limit: int
+    fast_limit: int
+    slow_time: int
+    stapm_time: int
+    temp_target: int
+    fan_curve: dict[int, float] | None
+
+
+class DevideProfile(TypedDict):
+    quiet: DevicePreset
+    balanced: DevicePreset
+    performance: DevicePreset
+    # Turbo is custom with max tdp values
+    turbo: DevicePreset
+
+    platform_profile_map: dict[str, int]
+    ppd_balanced_min: int
+    ppd_performance_min: int
+
+    alib: dict[str, AlibParams]
+    dev: dict[str, DeviceParams]
+
 
 PLATFORM_PROFILE_MAP = [
     ("low-power", 0),
@@ -29,6 +57,7 @@ ALIB_PARAMS_5040: dict[str, AlibParams] = ALIB_PARAMS
 ALIB_PARAMS_7040: dict[str, AlibParams] = ALIB_PARAMS
 ALIB_PARAMS_6040: dict[str, AlibParams] = ALIB_PARAMS
 ALIB_PARAMS_8040: dict[str, AlibParams] = ALIB_PARAMS
+ALIB_PARAMS_HX370: dict[str, AlibParams] = ALIB_PARAMS
 
 DEV_PARAMS_30W: dict[str, DeviceParams] = {
     "stapm_limit": D(0, 4, 15, 30, 40),
@@ -69,12 +98,14 @@ DEV_PARAMS_5000: dict[str, DeviceParams] = DEV_PARAMS_25W
 DEV_PARAMS_6000: dict[str, DeviceParams] = DEV_PARAMS_30W
 DEV_PARAMS_7040: dict[str, DeviceParams] = DEV_PARAMS_30W
 DEV_PARAMS_8040: dict[str, DeviceParams] = DEV_PARAMS_30W
+DEV_PARAMS_HX370: dict[str, DeviceParams] = DEV_PARAMS_30W
 DEV_PARAMS_LEGO = DEV_PARAMS_30W
 
 DEV_DATA: dict[str, tuple[dict[str, DeviceParams], dict[str, AlibParams], bool]] = {
     "NEO-01": (DEV_PARAMS_28W, ALIB_PARAMS_7040, False),
     "V3": (DEV_PARAMS_28W, ALIB_PARAMS_8040, False),
     "83E1": (DEV_PARAMS_LEGO, ALIB_PARAMS_7040, False),
+    "ONEXPLAYER F1Pro": (DEV_PARAMS_HX370, ALIB_PARAMS_HX370, False),
 }
 
 CPU_DATA: dict[str, tuple[dict[str, DeviceParams], dict[str, AlibParams]]] = {
@@ -88,4 +119,5 @@ CPU_DATA: dict[str, tuple[dict[str, DeviceParams], dict[str, AlibParams]]] = {
     "AMD Ryzen 7 7840U": (DEV_PARAMS_7040, ALIB_PARAMS_7040),
     "AMD Ryzen 7 8840U": (DEV_PARAMS_8040, ALIB_PARAMS_8040),
     # AMD Athlon Silver 3050e (Win600, will it support tdp?)
+    "AMD Ryzen AI 9 HX 370": (DEV_PARAMS_HX370, ALIB_PARAMS_HX370),
 }
