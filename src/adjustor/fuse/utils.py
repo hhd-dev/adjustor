@@ -21,7 +21,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 AMD_DGPU_KEYWORDS = [
-    "navi", "radeon", "rx", "vega", "5700", "6600", "6800", "6900", "7900"
+    "navi", "radeon", "rx", "vega"
 ]
 
 def _is_amd_dgpu(pci_address: str) -> bool:
