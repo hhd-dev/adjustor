@@ -3,14 +3,70 @@ import os
 import sys
 import time
 from threading import Event, Thread
+import subprocess
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 TDP_MOUNT = "/run/hhd-tdp/hwmon"
 FUSE_MOUNT_SOCKET = "/run/hhd-tdp/socket"
 
+AMD_DGPU_KEYWORDS = ['navi', 'vega', 'polaris']
 
-def find_igpu():
+import os
+import subprocess
+import logging
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+AMD_DGPU_KEYWORDS = [
+    "navi", "radeon", "rx", "vega", "5700", "6600", "6800", "6900", "7900"
+]
+
+def _is_amd_dgpu(pci_address: str) -> bool:
+    try:
+        result = subprocess.run(
+            ['lspci', '-s', pci_address],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True
+        )
+        output = result.stdout.decode().strip().lower()
+        logger.debug(f"lspci output for {pci_address}: {output}")
+
+        if any(keyword in output for keyword in AMD_DGPU_KEYWORDS):
+            logger.info(f"Detected AMD dGPU at {pci_address}")
+            return True
+
+    except subprocess.CalledProcessError as e:
+        logger.error(
+            f"Error decoding PCI address for GPU {pci_address}: "
+            f"{e.stderr.decode().strip()}"
+        )
+
+    return False
+
+
+def _extract_pci_address(hwmon_path: str) -> Optional[str]:
+    def _is_valid_pci_address(segment: str) -> bool:
+        return (
+            len(segment) == 12
+            and segment[4] == ':'
+            and segment[7] == ':'
+            and segment[10] == '.'
+        )
+
+    try:
+        segments = reversed(os.path.realpath(hwmon_path).split('/'))
+        return next((seg for seg in segments if _is_valid_pci_address(seg)), None)
+
+    except Exception as e:
+        logger.error(f"Error extracting PCI address for {hwmon_path}: {e}")
+        return None
+
+
+def find_amd_igpu():
     for hw in os.listdir("/sys/class/hwmon"):
         if not hw.startswith("hwmon"):
             continue
@@ -30,8 +86,10 @@ def find_igpu():
             )
             continue
 
-        pth = os.path.realpath(os.path.join("/sys/class/hwmon", hw))
-        return pth
+        if not _is_amd_dgpu(_extract_pci_address(f"/sys/class/hwmon/{hw}")):
+            pth = os.path.realpath(os.path.join("/sys/class/hwmon", hw))
+            logger.info(f"Found AMD iGPU at:\n'{pth}'")
+            return pth
 
     logger.error("No iGPU found. Binding TDP attributes will not be possible.")
     return None
@@ -39,7 +97,7 @@ def find_igpu():
 
 def prepare_tdp_mount(debug: bool = False, passhtrough: bool = False):
     try:
-        gpu = find_igpu()
+        gpu = find_amd_igpu()
         logger.info(f"Found GPU at:\n'{gpu}'")
         if not gpu:
             return False
@@ -176,3 +234,26 @@ def start_tdp_client(
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     prepare_tdp_mount(True)
+
+
+def find_intel_igpu():
+    for hw in os.listdir("/sys/class/drm"):
+        if not hw.startswith("card"):
+            continue
+        if not os.path.exists(f"/sys/class/drm/{hw}/device/subsystem_vendor"):
+            continue
+        with open(f"/sys/class/drm/{hw}/device/subsystem_vendor", "r") as f:
+            # intel
+            if "1462" not in f.read():
+                continue
+
+        if not os.path.exists(f"/sys/class/drm/{hw}/device/local_cpulist"):
+            logger.warning(
+                f'No local_cpulist found for "{hw}". Assuming it is a dedicated unit.'
+            )
+            continue
+
+        pth = os.path.realpath(os.path.join("/sys/class/drm", hw))
+        return pth
+
+    return None
