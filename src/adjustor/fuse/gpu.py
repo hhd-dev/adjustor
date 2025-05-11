@@ -38,6 +38,7 @@ class GPUStatus(NamedTuple):
     epp_avail: Sequence[EppStatus] | None
     epp: EppStatus | None
 
+
 def find_intel_igpu():
     for hw in os.listdir("/sys/class/drm"):
         if not hw.startswith("card"):
