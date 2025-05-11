@@ -11,26 +11,16 @@ logger = logging.getLogger(__name__)
 TDP_MOUNT = "/run/hhd-tdp/hwmon"
 FUSE_MOUNT_SOCKET = "/run/hhd-tdp/socket"
 
-AMD_DGPU_KEYWORDS = ['navi', 'vega', 'polaris']
+AMD_DGPU_KEYWORDS = ["navi", "vega", "polaris"]
 
-import os
-import subprocess
-import logging
-from typing import Optional
-
-logger = logging.getLogger(__name__)
-
-AMD_DGPU_KEYWORDS = [
-    "navi", "radeon", "rx", "vega"
-]
 
 def _is_amd_dgpu(pci_address: str) -> bool:
     try:
         result = subprocess.run(
-            ['lspci', '-s', pci_address],
+            ["lspci", "-s", pci_address],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            check=True
+            check=True,
         )
         output = result.stdout.decode().strip().lower()
         logger.debug(f"lspci output for {pci_address}: {output}")
@@ -52,13 +42,13 @@ def _extract_pci_address(hwmon_path: str) -> Optional[str]:
     def _is_valid_pci_address(segment: str) -> bool:
         return (
             len(segment) == 12
-            and segment[4] == ':'
-            and segment[7] == ':'
-            and segment[10] == '.'
+            and segment[4] == ":"
+            and segment[7] == ":"
+            and segment[10] == "."
         )
 
     try:
-        segments = reversed(os.path.realpath(hwmon_path).split('/'))
+        segments = reversed(os.path.realpath(hwmon_path).split("/"))
         return next((seg for seg in segments if _is_valid_pci_address(seg)), None)
 
     except Exception as e:
@@ -234,3 +224,26 @@ def start_tdp_client(
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     prepare_tdp_mount(True)
+
+
+def find_intel_igpu():
+    for hw in os.listdir("/sys/class/drm"):
+        if not hw.startswith("card"):
+            continue
+        if not os.path.exists(f"/sys/class/drm/{hw}/device/subsystem_vendor"):
+            continue
+        with open(f"/sys/class/drm/{hw}/device/subsystem_vendor", "r") as f:
+            # intel
+            if "1462" not in f.read():
+                continue
+
+        if not os.path.exists(f"/sys/class/drm/{hw}/device/local_cpulist"):
+            logger.warning(
+                f'No local_cpulist found for "{hw}". Assuming it is a dedicated unit.'
+            )
+            continue
+
+        pth = os.path.realpath(os.path.join("/sys/class/drm", hw))
+        return pth
+
+    return None
