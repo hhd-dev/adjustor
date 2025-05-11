@@ -38,6 +38,28 @@ class GPUStatus(NamedTuple):
     epp_avail: Sequence[EppStatus] | None
     epp: EppStatus | None
 
+def find_intel_igpu():
+    for hw in os.listdir("/sys/class/drm"):
+        if not hw.startswith("card"):
+            continue
+        if not os.path.exists(f"/sys/class/drm/{hw}/device/subsystem_vendor"):
+            continue
+        with open(f"/sys/class/drm/{hw}/device/subsystem_vendor", "r") as f:
+            # intel
+            if "1462" not in f.read():
+                continue
+
+        if not os.path.exists(f"/sys/class/drm/{hw}/device/local_cpulist"):
+            logger.warning(
+                f'No local_cpulist found for "{hw}". Assuming it is a dedicated unit.'
+            )
+            continue
+
+        pth = os.path.realpath(os.path.join("/sys/class/drm", hw))
+        return pth
+
+    return None
+
 
 def get_igpu_status():
     hwmon = find_intel_igpu()
