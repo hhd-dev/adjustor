@@ -13,7 +13,7 @@ TDP_MOUNT = "/run/hhd-tdp/hwmon"
 FUSE_MOUNT_SOCKET = "/run/hhd-tdp/socket"
 
 
-def _get_vulkaninfo_output():
+def _get_vulkaninfo_output() -> str:
     result = subprocess.run(["vulkaninfo", "--summary"], capture_output=True, text=True)
     return result.stdout
 
@@ -39,7 +39,7 @@ def _uuid_to_pci_address(uuid: str) -> Optional[str]:
     if len(bus_hex_le) != 4:
         return None
 
-    bus_hex = bus_hex_le[2:] + bus_hex_le[:2]  # '6400' → '0064'
+    bus_hex = bus_hex_le[2:] + bus_hex_le[:2]
     bus = int(bus_hex, 16)
 
     return f"0000:{bus:02x}:00.0"
