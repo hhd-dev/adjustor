@@ -5,37 +5,44 @@ import time
 from threading import Event, Thread
 import subprocess
 from typing import Optional
+import re
 
 logger = logging.getLogger(__name__)
 
 TDP_MOUNT = "/run/hhd-tdp/hwmon"
 FUSE_MOUNT_SOCKET = "/run/hhd-tdp/socket"
 
-AMD_DGPU_KEYWORDS = ["navi", "vega", "polaris"]
+
+def _get_vulkaninfo_output():
+    result = subprocess.run(["vulkaninfo", "--summary"], capture_output=True, text=True)
+    return result.stdout
 
 
-def _is_amd_dgpu(pci_address: str) -> bool:
-    try:
-        result = subprocess.run(
-            ["lspci", "-s", pci_address],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=True,
-        )
-        output = result.stdout.decode().strip().lower()
-        logger.debug(f"lspci output for {pci_address}: {output}")
+def _extract_integrated_gpu_uuid(vulkaninfo_output: str) -> Optional[str]:
+    devices = vulkaninfo_output.split("Devices:")[1]
+    device_blocks = re.split(r"GPU\d+:", devices)
 
-        if any(keyword in output for keyword in AMD_DGPU_KEYWORDS):
-            logger.info(f"Detected AMD dGPU at {pci_address}")
-            return True
+    for block in device_blocks:
+        if "PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU" in block:
+            uuid_match = re.search(r"deviceUUID\s*=\s*([a-fA-F0-9\-]+)", block)
+            if uuid_match:
+                return uuid_match.group(1).lower()
+    return None
 
-    except subprocess.CalledProcessError as e:
-        logger.error(
-            f"Error decoding PCI address for GPU {pci_address}: "
-            f"{e.stderr.decode().strip()}"
-        )
 
-    return False
+def _uuid_to_pci_address(uuid: str) -> Optional[str]:
+    parts = uuid.split("-")
+    if len(parts) != 5:
+        return None
+
+    bus_hex_le = parts[1]
+    if len(bus_hex_le) != 4:
+        return None
+
+    bus_hex = bus_hex_le[2:] + bus_hex_le[:2]  # '6400' → '0064'
+    bus = int(bus_hex, 16)
+
+    return f"0000:{bus:02x}:00.0"
 
 
 def _extract_pci_address(hwmon_path: str) -> Optional[str]:
@@ -52,31 +59,20 @@ def _extract_pci_address(hwmon_path: str) -> Optional[str]:
         return next((seg for seg in segments if _is_valid_pci_address(seg)), None)
 
     except Exception as e:
-        logger.error(f"Error extracting PCI address for {hwmon_path}: {e}")
+        logger.warning(f"Error extracting PCI address for {hwmon_path}: {e}")
         return None
 
 
 def find_amd_igpu():
+    igpu_pci_address = _uuid_to_pci_address(
+        _extract_integrated_gpu_uuid(_get_vulkaninfo_output())
+    )
+
     for hw in os.listdir("/sys/class/hwmon"):
         if not hw.startswith("hwmon"):
             continue
-        if not os.path.exists(f"/sys/class/hwmon/{hw}/name"):
-            continue
-        with open(f"/sys/class/hwmon/{hw}/name", 'r') as f:
-            if "amdgpu" not in f.read():
-                continue
 
-        if not os.path.exists(f"/sys/class/hwmon/{hw}/device"):
-            logger.error(f'No device symlink found for "{hw}"')
-            continue
-
-        if not os.path.exists(f"/sys/class/hwmon/{hw}/device/local_cpulist"):
-            logger.warning(
-                f'No local_cpulist found for "{hw}". Assuming it is a dedicated unit.'
-            )
-            continue
-
-        if not _is_amd_dgpu(_extract_pci_address(f"/sys/class/hwmon/{hw}")):
+        if igpu_pci_address == _extract_pci_address(f"/sys/class/hwmon/{hw}"):
             pth = os.path.realpath(os.path.join("/sys/class/hwmon", hw))
             logger.info(f"Found AMD iGPU at:\n'{pth}'")
             return pth
