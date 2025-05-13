@@ -3,9 +3,6 @@ import os
 import sys
 import time
 from threading import Event, Thread
-import subprocess
-from typing import Optional
-import re
 
 logger = logging.getLogger(__name__)
 
@@ -13,69 +10,23 @@ TDP_MOUNT = "/run/hhd-tdp/hwmon"
 FUSE_MOUNT_SOCKET = "/run/hhd-tdp/socket"
 
 
-def _get_vulkaninfo_output() -> str:
-    result = subprocess.run(["vulkaninfo", "--summary"], capture_output=True, text=True)
-    return result.stdout
-
-
-def _extract_integrated_gpu_uuid(vulkaninfo_output: str) -> Optional[str]:
-    devices = vulkaninfo_output.split("Devices:")[1]
-    device_blocks = re.split(r"GPU\d+:", devices)
-
-    for block in device_blocks:
-        if "PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU" in block:
-            uuid_match = re.search(r"deviceUUID\s*=\s*([a-fA-F0-9\-]+)", block)
-            if uuid_match:
-                return uuid_match.group(1).lower()
-    return None
-
-
-def _uuid_to_pci_address(uuid: str) -> Optional[str]:
-    parts = uuid.split("-")
-    if len(parts) != 5:
-        return None
-
-    bus_hex_le = parts[1]
-    if len(bus_hex_le) != 4:
-        return None
-
-    bus_hex = bus_hex_le[2:] + bus_hex_le[:2]
-    bus = int(bus_hex, 16)
-
-    return f"0000:{bus:02x}:00.0"
-
-
-def _extract_pci_address(hwmon_path: str) -> Optional[str]:
-    def _is_valid_pci_address(segment: str) -> bool:
-        return (
-            len(segment) == 12
-            and segment[4] == ":"
-            and segment[7] == ":"
-            and segment[10] == "."
-        )
-
-    try:
-        segments = reversed(os.path.realpath(hwmon_path).split("/"))
-        return next((seg for seg in segments if _is_valid_pci_address(seg)), None)
-
-    except Exception as e:
-        logger.warning(f"Error extracting PCI address for {hwmon_path}: {e}")
-        return None
-
-
 def find_amd_igpu():
-    igpu_pci_address = _uuid_to_pci_address(
-        _extract_integrated_gpu_uuid(_get_vulkaninfo_output())
-    )
-
     for hw in os.listdir("/sys/class/hwmon"):
         if not hw.startswith("hwmon"):
             continue
+        if not os.path.exists(f"/sys/class/hwmon/{hw}/name"):
+            continue
+        with open(f"/sys/class/hwmon/{hw}/name", "r") as f:
+            if "amdgpu" not in f.read():
+                continue
 
-        if igpu_pci_address == _extract_pci_address(f"/sys/class/hwmon/{hw}"):
-            pth = os.path.realpath(os.path.join("/sys/class/hwmon", hw))
-            logger.info(f"Found AMD iGPU at:\n'{pth}'")
-            return pth
+        if not os.path.exists(f"/sys/class/hwmon/{hw}/device"):
+            logger.error(f'No device symlink found for "{hw}"')
+            continue
+
+        # This assume dGPU will come with VRAM vendor while iGPU will not
+        if not os.path.exists(f"/sys/class/hwmon/{hw}/device/mem_info_vram_vendor"):
+            return os.path.realpath(os.path.join("/sys/class/hwmon", hw))
 
     logger.error("No iGPU found. Binding TDP attributes will not be possible.")
     return None
