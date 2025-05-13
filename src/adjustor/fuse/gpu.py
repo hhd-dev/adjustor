@@ -3,7 +3,7 @@ import os
 from typing import Literal, NamedTuple
 from typing import Sequence
 
-from adjustor.fuse.utils import find_igpu as find_amd_igpu
+from adjustor.fuse.utils import find_amd_igpu
 
 logger = logging.getLogger(__name__)
 GPU_FREQUENCY_PATH = "device/pp_od_clk_voltage"
