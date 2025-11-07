@@ -14,13 +14,9 @@ source=("https://pypi.python.org/packages/source/a/adjustor/adjustor-${pkgver}.t
 sha512sums=('SKIP')
 
 build() {
-  cd "adjustor-$pkgver"
-  python -m build --wheel --no-isolation
 }
 
 package() {
-  cd "adjustor-$pkgver"
-  python -m installer --destdir="$pkgdir" dist/*.whl
 	# mkdir -p ${pkgdir}/usr/share/dbus-1/system.d/
   # install -m644 usr/share/dbus-1/system.d/hhd-net.hadess.PowerProfiles.conf ${pkgdir}/usr/share/dbus-1/system.d/hhd-net.hadess.PowerProfiles.conf
 }
