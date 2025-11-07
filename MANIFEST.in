@@ -1,4 +1,0 @@
-recursive-include src/adjustor *.yml
-recursive-include src/adjustor *.yaml
-recursive-include src/adjustor *.xml.in
-graft usr/
